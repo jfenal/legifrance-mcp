@@ -6,7 +6,7 @@ Serveur MCP [Model Context Protocol](https://modelcontextprotocol.io/introductio
 
 Ce projet implémente un serveur MCP qui permet d'accéder aux ressources juridiques françaises (textes légaux, codes, jurisprudence) directement depuis un Large Language Model. Il facilite les recherches juridiques en rendant les données de Legifrance accessibles via des outils interactifs.
 
-Il faut suite à la création du package [pylegifrance](https://github.com/rdassignies/pylegifrance). 
+Il fait suite à la création du package [pylegifrance](https://github.com/pylegifrance/pylegifrance). 
 
 ### Qu'est-ce que le MCP ?
 
@@ -35,44 +35,45 @@ Le serveur prend en charge les fonctionnalités suivantes:
 
 Les autres fonds Legifrance seront bientôt implémentés. 
 
-Si vous souhaitez accéder directement à l'API Legifrance pour connecter votre propre serveur MCP, 
-c'est par ici : [https://lab.dassignies.law](https://lab.dassignies.law/api/docs) ou [linkedin](https://fr.linkedin.com/in/dassignies)
+Ce fork authentifie directement auprès de PISTE (le portail officiel DILA) via
+la bibliothèque [pylegifrance](https://github.com/pylegifrance/pylegifrance),
+plutôt que via un proxy tiers.
 
 ## Prérequis
 
-- Python 3.9+
-- Clé API pour Legifrance (à obtenir auprès de [lab.dassignies.law](https://lab.dassignies.fr/))
+- Python 3.12+
+- Un compte [PISTE](https://piste.gouv.fr/registration) avec une application
+  souscrite aux API **Légifrance** et **Judilibre** (CGU acceptées pour les
+  deux, en sandbox comme en production)
 - Un modèle compatible avec le protocole MCP (comme Claude desktop)
 
 ## Installation
 
-3. Créez un environnement virtuel et activez-le:
+1. Clonez ce fork et le fork de [pylegifrance](https://github.com/pylegifrance/pylegifrance)
+   en répertoire frère:
 ```bash
-python -m venv venv 
-source venv/bin/activate  # Sur Windows: venv\Scripts\activate
-```
-```bash
-uv venv .venv 
-source .venv/bin/activate  # Sur Windows: venv\Scripts\activate
-```
-2. Installer via pip:
-```bash
-pip install git+https://github.com/rdassignies/mcp-server-legifrance.git
+git clone https://github.com/<vous>/mcp-server-legifrance.git
+git clone https://github.com/<vous>/pylegifrance.git
 ```
 
-3. Installer via uv
+2. Installez les dépendances:
 ```bash
-uv pip install git+https://github.com/rdassignies/mcp-server-legifrance.git
+cd mcp-server-legifrance
+uv sync
 ```
 
-
-4. Créez un fichier `.env` à la racine du projet avec vos identifiants:
+3. Créez un fichier `.env` à la racine du projet avec vos identifiants PISTE:
 ```
-DASSIGNIES_API_KEY=votre_clé_api
-DASSIGNIES_API_URL=https://lab.dassignies.law/api/ # ou l'URL correspondante
+LEGIFRANCE_CLIENT_ID=votre_client_id
+LEGIFRANCE_CLIENT_SECRET=votre_client_secret
+PISTE_ENV=sandbox  # ou "production" ; "sandbox" par défaut si omis
+JUDILIBRE_KEY_ID=votre_key_id  # requis pour le tool rechercher_jurisprudence_judilibre
 ```
 
-Pour obtenir vos clés API de test, merci de me contacter via  [LinkedIn](https://www.linkedin.com/in/dassignies/) 
+Ces identifiants s'obtiennent sur [piste.gouv.fr](https://piste.gouv.fr/registration) —
+voir la FAQ officielle de l'[API Légifrance](https://www.legifrance.gouv.fr/contenu/pied-de-page/foire-aux-questions-api)
+pour la procédure complète (création de compte, consentement aux CGU par API,
+puis souscription de l'application).
 
 ## Utilisation
 
@@ -107,6 +108,11 @@ Voici un exemple d'utilisation:
 
 ## Outils disponibles
 
+Ces cinq outils appellent directement l'API Légifrance (`fonds.code`,
+`fonds.loda`, `fonds.juri`) ou l'API Judilibre de
+[pylegifrance](https://github.com/pylegifrance/pylegifrance) — voir sa
+documentation technique pour le détail des paramètres sous-jacents.
+
 ### 1. rechercher_dans_texte_legal
 
 Recherche des articles dans les textes légaux (lois, ordonnances, décrets, arrêtés).
@@ -117,8 +123,6 @@ Recherche des articles dans les textes légaux (lois, ordonnances, décrets, arr
 - **champ**: Zone de recherche ("ALL", "TITLE", "TABLE", "NUM_ARTICLE", "ARTICLE")
 - **type_recherche**: Mode de recherche ("TOUS_LES_MOTS_DANS_UN_CHAMP", "EXPRESSION_EXACTE", "AU_MOINS_UN_MOT")
 - **page_size**: Nombre de résultats (max 100)
-
-Pour les détails, cf [https://lab.dassignies.law/api/docs](https://lab.dassignies.law/api/docs)
 
 **Exemple:**
 Pour rechercher l'article 7 de la loi 78-17:
@@ -156,7 +160,6 @@ Pour rechercher des informations sur le PACS dans le Code civil, le modèle de l
   "code_name": "Code civil"
 }
 ```
-Pour les détails, cf [https://lab.dassignies.law/api/docs](https://lab.dassignies.law/api/docs)
 
 ### 3. rechercher_jurisprudence_judiciaire
 
@@ -187,7 +190,40 @@ Recherche dans la base de jurisprudence judiciaire. On peut utiliser la puissanc
 - **juri_keys**: Champs de réponse à extraire 
 - **juridiction_judiciaire**: Liste des juridictions
 
-Pour les détails, cf [https://lab.dassignies.law/api/docs](https://lab.dassignies.law/api/docs)
+### 4. rechercher_jurisprudence_judilibre
+
+Recherche de décisions de justice via l'API Judilibre (Cour de cassation et
+juridictions du fond), en complément de `rechercher_jurisprudence_judiciaire`.
+Nécessite la variable d'environnement `JUDILIBRE_KEY_ID`.
+
+**Paramètres:**
+- **search**: Termes de recherche
+- **jurisdiction**: Juridiction(s) à filtrer
+- **chamber**: Chambre(s) à filtrer
+- **date_start** / **date_end**: Plage de dates (YYYY-MM-DD)
+- **page_size**: Nombre de résultats (max 100)
+
+**Exemple:**
+```
+{
+  "search": "licenciement sans cause réelle et sérieuse"
+}
+```
+
+### 5. get_text_history
+
+Retourne l'historique des modifications (créations, modifications,
+abrogations d'articles) apportées par un texte légal.
+
+**Paramètres:**
+- **text_id**: Identifiant du texte (ex: "78-17")
+
+**Exemple:**
+```
+{
+  "text_id": "78-17"
+}
+```
 
 ## Prompts prédéfinis
 
@@ -233,7 +269,10 @@ response = client.messages.create(
 
 ## Limitations
 
-- Les requêtes sont limitées à 10 par seconde pour respecter les limites de l'API
+- Les requêtes sont limitées à 5 par seconde par défaut (`rate_limit` dans
+  `src/server.py`) — PISTE applique son propre quota par application, non
+  publié publiquement; consultez le vôtre sur piste.gouv.fr (Applications >
+  Actions > Consulter les quotas) et ajustez cette valeur en conséquence.
 - Une connexion internet est nécessaire pour accéder aux bases juridiques
 - Le serveur ne met pas en cache les résultats, chaque requête interroge l'API
 
