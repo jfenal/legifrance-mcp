@@ -719,7 +719,7 @@ async def get_prompt(prompt_name: str, inputs: dict[str, str] | None) -> GetProm
     return await call_get_prompt(prompt_name, inputs)
 
 async def main():
-    """Point d'entrée principal du serveur MCP."""
+    """Point d'entrée principal du serveur MCP (transport stdio)."""
     import mcp.server.stdio
     try:
         logger.info("Démarrage du serveur MCP Legifrance...")
@@ -733,5 +733,76 @@ async def main():
         logger.error(f"Erreur fatale lors de l'exécution du serveur: {str(e)}")
         raise
 
+
+_VALID_TRANSPORTS = {"stdio", "http"}
+
+
+def _select_transport() -> str:
+    """Lit MCP_TRANSPORT (``"stdio"`` par défaut) pour choisir le transport."""
+    raw = os.getenv("MCP_TRANSPORT", "stdio").strip().lower()
+    if raw not in _VALID_TRANSPORTS:
+        raise ValueError(
+            f"MCP_TRANSPORT invalide: {raw!r}. Valeurs acceptées: {sorted(_VALID_TRANSPORTS)}"
+        )
+    return raw
+
+
+async def _ping(request):
+    from starlette.responses import JSONResponse
+
+    return JSONResponse({"status": "ok"})
+
+
+def _build_http_app():
+    """Construit l'application ASGI exposant le serveur MCP en HTTP.
+
+    Réutilise directement l'instance ``server`` bas niveau (mêmes handlers
+    que le transport stdio) via le ``StreamableHTTPSessionManager`` du SDK
+    MCP -- ``stateless=True`` et ``json_response=True`` car chacun de nos
+    outils est un appel indépendant, sans besoin d'état de session entre
+    deux appels, ce qui évite la complexité du suivi de session et des flux
+    SSE pour ce premier support HTTP.
+    """
+    from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+    from starlette.applications import Starlette
+    from starlette.routing import Route
+    from starlette.types import Receive, Scope, Send
+
+    session_manager = StreamableHTTPSessionManager(
+        app=server, stateless=True, json_response=True
+    )
+
+    class _MCPASGIApp:
+        async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+            await session_manager.handle_request(scope, receive, send)
+
+    return Starlette(
+        routes=[
+            Route("/ping", _ping, methods=["GET"]),
+            # Route (exact path), not Mount: Mount's path regex only matches
+            # "/mcp/<anything, possibly empty>" -- the bare "/mcp" that
+            # streamable-HTTP clients POST to wouldn't match at all, and
+            # Mount's default redirect-to-trailing-slash behavior turns a
+            # client's POST into a 307 that most MCP clients don't retry.
+            Route("/mcp", _MCPASGIApp(), methods=["GET", "POST", "DELETE"]),
+        ],
+        lifespan=lambda app: session_manager.run(),
+    )
+
+
+async def main_http():
+    """Point d'entrée du serveur MCP en transport HTTP (streamable)."""
+    import uvicorn
+
+    host = os.getenv("MCP_HTTP_HOST", "127.0.0.1")
+    port = int(os.getenv("MCP_HTTP_PORT", "8000"))
+    logger.info(f"Démarrage du serveur MCP Legifrance en HTTP sur {host}:{port}...")
+    config = uvicorn.Config(_build_http_app(), host=host, port=port, log_level="info")
+    await uvicorn.Server(config).serve()
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    if _select_transport() == "http":
+        asyncio.run(main_http())
+    else:
+        asyncio.run(main())

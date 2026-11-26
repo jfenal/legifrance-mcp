@@ -16,11 +16,14 @@ dependencies = [
     "requests>=2.32.3",
     "load-dotenv>=0.1.0",
     "pylegifrance",
+    "starlette>=1.10.0",
+    "uvicorn>=0.54.0",
 ]
 
 [dependency-groups]
 dev = [
     "basedpyright>=1.40.2",
+    "httpx>=0.28.1",
     "mypy>=2.4.1",
     "pre-commit>=4.7.0",
     "pytest>=8.3.5",
