@@ -1,5 +1,5 @@
 [project]
-name = "mcp-server-legifrance"
+name = "legifrance-mcp"
 version = "0.1.0"
 description = "MCP server pour legifrance"
 readme = "README.md"

@@ -1,4 +1,4 @@
-# mcp-server-legifrance
+# legifrance-mcp
 
 Serveur MCP [Model Context Protocol](https://modelcontextprotocol.io/introduction) expérimental permettant d'interroger les bases juridiques françaises via l'API Legifrance dans des LLMs compatibles comme Claude.
 
@@ -7,6 +7,16 @@ Serveur MCP [Model Context Protocol](https://modelcontextprotocol.io/introductio
 Ce projet implémente un serveur MCP qui permet d'accéder aux ressources juridiques françaises (textes légaux, codes, jurisprudence) directement depuis un Large Language Model. Il facilite les recherches juridiques en rendant les données de Legifrance accessibles via des outils interactifs.
 
 Il fait suite à la création du package [pylegifrance](https://github.com/pylegifrance/pylegifrance). 
+
+### Origine
+
+Ce dépôt est issu d'un fork du projet [pylegifrance/mcp-server-legifrance](https://github.com/pylegifrance/mcp-server-legifrance),
+créé par Raphaël d'Assignies ([dassignies.law](https://dassignies.law)), qui
+authentifiait via son proxy tiers. Le fork a depuis divergé significativement
+(authentification directe auprès de PISTE, dépendance sur
+[un fork de pylegifrance](https://github.com/jfenal/pylegifrance), nouveaux
+outils Judilibre et `get_text_history`, recherche par proximité, etc.) et a
+été détaché de son dépôt d'origine pour devenir ce projet autonome.
 
 ### Qu'est-ce que le MCP ?
 
@@ -24,7 +34,7 @@ L'importance du MCP réside dans sa capacité à créer une interface standardis
 
 4. **Extension des capacités** : Les LLMs peuvent accéder à des données en temps réel et exécuter des opérations complexes qu'ils ne pourraient pas réaliser seuls.
 
-### mcp-server-legifrance ? 
+### legifrance-mcp ?
 
 L’idée est d’exploiter la puissance des modèles de langage comme Claude pour effectuer des traitements sur des contenus juridiques officiels via Légifrance, et à terme, d’autres bases de données publiques comme le RNE, le BODACC, etc. Les premiers résultats sont très prometteurs et permettent de pallier certaines limites de la recherche statistique classique proposée par Légifrance. Le service est en amélioration continue, mais vous pouvez déjà consulter quelques exemples de recherches ci-dessous.
 
@@ -35,9 +45,15 @@ Le serveur prend en charge les fonctionnalités suivantes:
 
 Les autres fonds Legifrance seront bientôt implémentés. 
 
-Ce fork authentifie directement auprès de PISTE (le portail officiel DILA) via
-la bibliothèque [pylegifrance](https://github.com/pylegifrance/pylegifrance),
+Ce projet authentifie directement auprès de PISTE (le portail officiel DILA)
+via la bibliothèque [pylegifrance](https://github.com/pylegifrance/pylegifrance),
 plutôt que via un proxy tiers.
+
+Il utilise actuellement [le fork jfenal/pylegifrance](https://github.com/jfenal/pylegifrance/tree/direct-piste-integration),
+qui ajoute le support direct de PISTE et de Judilibre et corrige plusieurs
+bugs (validation des identifiants CID/NOR, gestion de l'expiration des
+jetons, recherche par proximité, etc. — voir [la pull request correspondante](https://github.com/pylegifrance/pylegifrance/pull/79))
+tant que ces correctifs ne sont pas fusionnés dans le dépôt officiel.
 
 ## Prérequis
 
@@ -49,16 +65,19 @@ plutôt que via un proxy tiers.
 
 ## Installation
 
-1. Clonez ce fork et le fork de [pylegifrance](https://github.com/pylegifrance/pylegifrance)
-   en répertoire frère:
+1. Clonez ce dépôt et [le fork jfenal/pylegifrance](https://github.com/jfenal/pylegifrance)
+   (branche `direct-piste-integration`) en répertoire frère — ce projet
+   dépend de pylegifrance via un chemin local (voir `pyproject.toml`), et
+   nécessite les correctifs de ce fork tant qu'ils ne sont pas fusionnés
+   dans le dépôt officiel ([pylegifrance/pylegifrance#79](https://github.com/pylegifrance/pylegifrance/pull/79)):
 ```bash
-git clone https://github.com/<vous>/mcp-server-legifrance.git
-git clone https://github.com/<vous>/pylegifrance.git
+git clone https://github.com/jfenal/legifrance-mcp.git
+git clone -b direct-piste-integration https://github.com/jfenal/pylegifrance.git
 ```
 
 2. Installez les dépendances:
 ```bash
-cd mcp-server-legifrance
+cd legifrance-mcp
 uv sync
 ```
 
@@ -78,40 +97,58 @@ puis souscription de l'application).
 ## Utilisation
 
 
-### Intégration avec Claude
+### Intégration avec Claude Desktop
 
-C'est l'intégration la plus "simple". 
+1. Ouvrez la configuration de Claude Desktop (Paramètres > Développeur >
+   Modifier la configuration, un fichier `.json`) et ajoutez cette entrée,
+   en remplaçant `<CHEMIN_VERS_VOTRE_REP>` par le chemin absolu où vous avez
+   cloné ce dépôt. `uv run` se charge de l'environnement virtuel — inutile
+   de pointer vers un interpréteur Python spécifique.
 
-
-1. Utilisez le fichier de configuration suivant pour intégrer le serveur MCP dans Claude Desktop. 
-Pour trouver ce fichier, il faut aller dans paramètres>Développeur>modifier la configuration (renvoie vers le fichier de configuration au format .json). 
-
-Il existe également une procédure à la ligne de commande via uv qui sera documentée ultérieurement. 
-
-Voici un exemple d'utilisation:
-
-```python
+```json
 {
   "mcpServers": {
     "legifrance": {
-      "command": "<CHEMIN_VERS_VOTRE_REP>/mcp-server-legifrance/venv/bin/python",
-            "args": [
-                "<CHEMIN_VERS_VOTRE_REP>/mcp-server-legifrance/src/server.py"
-		]
-
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory", "<CHEMIN_VERS_VOTRE_REP>/legifrance-mcp",
+        "python", "src/server.py"
+      ]
     }
   }
 }
 ```
-2. Démarrer Claude desktop, vous devez voir apparaître des icônes outils : 
-![alt text](image.png)
+
+2. Redémarrez Claude Desktop. L'icône d'outils (🔨) dans la zone de saisie
+   doit lister les cinq outils ci-dessous :
+![Icônes d'outils dans Claude Desktop](image.png)
+
+3. Essayez par exemple : *« Recherche les conditions de validité du PACS
+   dans le Code civil »*. Claude appelle `rechercher_code` et répond en
+   citant l'article trouvé, avec son URL Légifrance :
+
+```
+> Recherche les conditions de validité du PACS dans le Code civil
+
+[appel de l'outil rechercher_code: search="pacte civil de solidarité", code_name="Code civil"]
+
+## Code civil — art. 515-1
+**État**: VIGUEUR
+**URL**: https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000006428463
+
+Un pacte civil de solidarité est un contrat conclu par deux personnes
+physiques majeures, de sexe différent ou de même sexe, pour organiser
+leur vie commune.
+[...]
+```
 
 ## Outils disponibles
 
 Ces cinq outils appellent directement l'API Légifrance (`fonds.code`,
 `fonds.loda`, `fonds.juri`) ou l'API Judilibre de
-[pylegifrance](https://github.com/pylegifrance/pylegifrance) — voir sa
-documentation technique pour le détail des paramètres sous-jacents.
+[pylegifrance (fork jfenal)](https://github.com/jfenal/pylegifrance/tree/direct-piste-integration) —
+voir sa documentation technique pour le détail des paramètres sous-jacents.
 
 ### 1. rechercher_dans_texte_legal
 
@@ -138,10 +175,9 @@ Pour rechercher l'article 7 de la loi 78-17:
 
 Recherche des articles dans les codes juridiques français.
 
-Par ex. "Rédige moi une synthèse sur le régime juridique du PACS"
-
-<img width="793" alt="image" src="https://github.com/user-attachments/assets/9af3dd26-cef1-4859-b4b4-55bcfaeb0d4f" />
-
+Par ex. *"Rédige-moi une synthèse sur le régime juridique du PACS"* — voir la
+démonstration dans la section [Intégration avec Claude Desktop](#intégration-avec-claude-desktop)
+ci-dessus pour un exemple complet d'appel et de réponse.
 
 **Paramètres:**
 - **search**: Termes de recherche
@@ -163,21 +199,20 @@ Pour rechercher des informations sur le PACS dans le Code civil, le modèle de l
 
 ### 3. rechercher_jurisprudence_judiciaire
 
-Recherche dans la base de jurisprudence judiciaire. On peut utiliser la puissance des modèles de langage pour faire des recherches de jurisprudences directement dans Legifrance. 
+Recherche dans la base de jurisprudence judiciaire. On peut utiliser la
+puissance des modèles de langage pour faire des recherches de
+jurisprudence directement dans Légifrance, par exemple :
 
-**Exemple 1** Panorama des dernières jp sur un thème particulier (ex. "Trouve moi les dernières jp sur la rupture brutale des relations commerciales établies et rédige moi un tableau de synthèse" ). 
-
-<img width="1456" alt="image" src="https://github.com/user-attachments/assets/e5d77948-7ddf-434c-be31-24feacbfbb22" />
-
-**Exemple 2** A partir d'une décision particulière connu (numéro de pourvoi 23-23.382), on peut faire des analyses par étapes : 
-1. On trouve l'arrêt et Claude génère la fiche d'arrêt
-2. On lui demande d'extraire les articles visés et de les trouver dans Legifrance
-3. On lui demande de trouver des jp similaires
-4. etc ...
-
-
-![image](https://github.com/user-attachments/assets/306724b7-5a42-41c2-9b96-ac591d8880b9)
-
+- *« Trouve les dernières décisions sur la rupture brutale des relations
+  commerciales établies et fais-moi un tableau de synthèse »* — Claude
+  appelle `rechercher_jurisprudence_judiciaire` avec
+  `search="rupture brutale des relations commerciales établies"`,
+  `sort="DATE_DESC"`, puis construit le tableau à partir des décisions
+  renvoyées (chacune avec son URL Légifrance).
+- Analyse pas à pas d'une décision connue (numéro de pourvoi) : Claude la
+  retrouve, en extrait la fiche d'arrêt et les articles visés, puis peut
+  rechercher ces mêmes articles via `rechercher_code`/`rechercher_dans_texte_legal`
+  et des décisions comparables via un second appel à cet outil.
 
 **Paramètres:**
 - **search**: Termes ou numéro d'affaire
